@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>健康管理助手</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar{width:5px;}
+    .custom-scrollbar::-webkit-scrollbar-track{background:transparent;}
+    .custom-scrollbar::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px;}
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
+
+    .msg-row{display:flex;flex-direction:column;max-width:80%;animation:fadeInUp .3s ease-out;}
+    .msg-row.user{align-self:flex-end;align-items:flex-end;}
+    .msg-row.bot{align-self:flex-start;align-items:flex-start;}
+    @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+    .bubble{padding:.7rem 1rem;border-radius:16px;line-height:1.65;font-size:.9375rem;white-space:pre-wrap;word-break:break-word;max-width:100%;}
+    .user .bubble{background:#2563eb;color:#fff;border-bottom-right-radius:6px;}
+    .bot .bubble{background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-bottom-left-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+
+    .bot .bubble table{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:.85rem;}
+    .bot .bubble th,.bot .bubble td{border:1px solid #d1d5db;padding:.35rem .6rem;text-align:left;}
+    .bot .bubble th{background:#f1f5f9;font-weight:600;}
+    .bot .bubble strong{font-weight:700;color:#0f172a;}
+    .bot .bubble ul,.bot .bubble ol{padding-left:1.25rem;margin:.35rem 0;}
+    .bot .bubble code{background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-size:.85em;}
+
+    .thumb-preview{margin-bottom:.4rem;border-radius:10px;max-width:200px;max-height:140px;object-fit:cover;display:block;}
+    .user .thumb-preview{border:2px solid rgba(255,255,255,.45);}
+    .bot .thumb-preview{border:2px solid #e2e8f0;}
+
+    #attach-btn.has-file{background:#dbeafe;border-color:#2563eb;color:#2563eb;}
+
+    /* Lightbox 缩放过渡 */
+    #lightbox-img{transition:transform .1s;}
+    #lightbox-close{transition:opacity .15s;opacity:.75;}
+    #lightbox-close:hover{opacity:1;}
+
+    @media(max-width:768px){#dashboard{display:none}.msg-row{max-width:90%}}
+  </style>
+</head>
+<body class="h-screen flex bg-gray-50 font-sans antialiased">
+
+  <!-- ========== Toast 浮动提示窗 ========== -->
+  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl shadow-lg opacity-0 -translate-y-5 pointer-events-none transition-all duration-300 whitespace-nowrap">
+    ⚠️ 请输入与运动健康相关的目标！
+  </div>
+
+  <!-- ========== 全屏信息录入模态框（默认显示） ========== -->
+  <div id="profile-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 animate-[fadeInUp_.4s_ease-out]">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl mx-auto mb-3 shadow-lg">🏥</div>
+        <h2 class="text-xl font-bold text-gray-800">欢迎来到健康管家</h2>
+        <p class="text-sm text-gray-500 mt-1">请填写你的身体档案，开启专属健康管理</p>
+      </div>
+      <form id="profile-form" class="space-y-4">
+        <!-- 年龄 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">年龄</label>
+          <input type="number" id="profile-age" required min="10" max="120" placeholder="请输入年龄" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+        </div>
+        <!-- 身高 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">身高 (cm)</label>
+          <input type="number" id="profile-height" required min="50" max="250" step="0.1" placeholder="请输入身高" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+        </div>
+        <!-- 体重 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">体重 (kg)</label>
+          <input type="number" id="profile-weight" required min="20" max="300" step="0.1" placeholder="请输入体重" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+        </div>
+        <!-- 长期健康目标 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">长期健康目标</label>
+          <select id="profile-goal" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+            <option value="保持健康体重，提升体能">保持健康体重，提升体能</option>
+            <option value="减脂塑形，降低体脂率">减脂塑形，降低体脂率</option>
+            <option value="增肌增重，提升力量">增肌增重，提升力量</option>
+            <option value="改善睡眠质量，缓解疲劳">改善睡眠质量，缓解疲劳</option>
+            <option value="均衡饮食，改善营养结构">均衡饮食，改善营养结构</option>
+            <option value="提高运动表现，备战比赛">提高运动表现，备战比赛</option>
+          </select>
+          <p class="text-xs text-gray-400 mt-1">后续可在左侧面板随时修改</p>
+        </div>
+        <!-- 昨晚睡眠时长 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">昨晚睡眠时长 (小时)</label>
+          <input type="number" id="profile-sleep" required min="0" max="24" step="0.5" placeholder="如 7.5" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+        </div>
+        <!-- 今日疲劳程度 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">今日疲劳程度</label>
+          <select id="profile-fatigue" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+            <option value="1">1级 - 精力充沛</option>
+            <option value="2">2级 - 状态良好</option>
+            <option value="3">3级 - 轻微疲劳</option>
+            <option value="4">4级 - 略感疲惫</option>
+            <option value="5">5级 - 中度疲劳</option>
+            <option value="6" selected>6级 - 明显疲劳</option>
+            <option value="7">7级 - 重度疲劳</option>
+            <option value="8">8级 - 非常疲惫</option>
+            <option value="9">9级 - 极度疲劳</option>
+            <option value="10">10级 - 精疲力竭</option>
+          </select>
+          <p id="fatigue-hint" class="text-xs text-amber-500 mt-1">中度疲劳 — 略有疲惫，建议适量运动</p>
+        </div>
+        <!-- 今日运动目标（非必填） -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">今日运动目标 <span class="text-gray-400 font-normal">(选填)</span></label>
+          <input type="text" id="profile-exercise" placeholder="如：慢跑30分钟 / 力量训练20分钟" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all">
+        </div>
+        <!-- 提交按钮 -->
+        <button type="submit" class="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium rounded-xl shadow-md hover:shadow-lg active:scale-[.98] transition-all flex items-center justify-center gap-2 mt-2">
+          <span>🚀</span> 开启专属管家
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========== 每日打卡轻量模态框 ========== -->
+  <div id="daily-checkin-modal" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-[fadeInUp_.3s_ease-out]">
+      <div class="text-center mb-5">
+        <div class="text-3xl mb-2">🌞</div>
+        <h2 class="text-lg font-bold text-gray-800">早安！新的一天</h2>
+        <p class="text-xs text-gray-500 mt-1">记录昨晚的睡眠，让管家为你重新规划今日</p>
+      </div>
+      <form id="daily-checkin-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">昨晚睡眠时长 (小时)</label>
+          <input type="number" id="checkin-sleep" required min="0" max="24" step="0.5" class="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">今日疲劳程度 (1-10)</label>
+          <input type="number" id="checkin-fatigue" required min="1" max="10" step="1" class="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button type="button" onclick="document.getElementById('daily-checkin-modal').classList.add('hidden')" class="flex-1 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors">取消</button>
+          <button type="submit" class="flex-1 py-2.5 bg-emerald-500 text-white font-medium rounded-xl shadow-md hover:bg-emerald-600 transition-colors">确认打卡</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========== 左侧：健康仪表盘 ========== -->
+  <aside id="dashboard" class="w-[28%] min-w-[270px] max-w-[340px] bg-white shadow-[2px_0_12px_rgba(0,0,0,.06)] z-10 flex flex-col border-r border-gray-100">
+
+    <div class="px-5 pt-7 pb-5 border-b border-gray-100">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-md flex-shrink-0">👤</div>
+        <div class="min-w-0">
+          <p class="font-semibold text-gray-800 text-base truncate">早上好 👋</p>
+          <p id="dashboard-name" class="text-sm text-gray-500 truncate">健康用户</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-3">
+
+      <!-- 卡片1：恢复评分（动态） -->
+      <div class="rounded-xl p-4 bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">🛡️</span>
+          <span class="text-xs font-medium text-emerald-700 uppercase tracking-wide">今日恢复评分</span>
+        </div>
+        <div class="flex items-baseline gap-1.5">
+          <span id="dashboard-recovery" class="text-3xl font-bold text-emerald-600">--</span>
+          <span class="text-sm text-emerald-500">/100</span>
+        </div>
+        <span id="dashboard-recovery-badge" class="inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">待录入</span>
+        <p id="dashboard-sleep-fatigue" class="text-xs text-gray-500 mt-2">请先在弹窗中录入数据</p>
+      </div>
+
+      <!-- 卡片2：BMR（动态） -->
+      <div class="rounded-xl p-4 bg-gradient-to-br from-blue-50 to-sky-50 border border-blue-100 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">🔥</span>
+          <span class="text-xs font-medium text-blue-700 uppercase tracking-wide">基础代谢 BMR</span>
+        </div>
+        <div class="flex items-baseline gap-1.5">
+          <span id="dashboard-bmr" class="text-3xl font-bold text-blue-600">--</span>
+          <span class="text-sm text-blue-400">kcal/天</span>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs text-gray-500">
+          <span id="dashboard-height">身高 --cm</span><span class="text-gray-300">|</span><span id="dashboard-weight">体重 --kg</span>
+        </div>
+      </div>
+
+      <!-- 卡片3：今日运动目标（可编辑） -->
+      <div class="rounded-xl p-4 bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100 shadow-sm">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="text-lg">🏃</span>
+          <span class="text-xs font-medium text-orange-700 uppercase tracking-wide">今日运动目标</span>
+          <button id="exercise-edit-btn" class="ml-auto text-orange-400 hover:text-orange-600 text-xs cursor-pointer transition-colors" title="编辑运动目标">✏️</button>
+        </div>
+        <!-- 展示态 -->
+        <p id="exercise-display" class="text-sm text-gray-700 leading-relaxed">无</p>
+        <!-- 编辑态（默认隐藏） -->
+        <div id="exercise-editor" class="hidden mt-2">
+          <input type="text" id="exercise-input" class="w-full px-3 py-1.5 bg-white border border-orange-200 rounded-lg text-sm text-gray-700 outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-200" placeholder="输入今日运动目标...">
+          <div class="flex gap-2 mt-2">
+            <button id="exercise-save-btn" class="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded-lg cursor-pointer transition-colors">✔️ 保存</button>
+            <button id="exercise-cancel-btn" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs rounded-lg cursor-pointer transition-colors">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 长期目标（可编辑） -->
+      <div class="rounded-xl p-4 bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-100 shadow-sm">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="text-lg">🎯</span>
+          <span class="text-xs font-medium text-purple-700 uppercase tracking-wide">长期目标</span>
+          <button id="goal-edit-btn" class="ml-auto text-purple-400 hover:text-purple-600 text-xs cursor-pointer transition-colors" title="编辑目标">✏️</button>
+        </div>
+        <!-- 展示态 -->
+        <p id="goal-display" class="text-sm text-gray-700 leading-relaxed">保持健康体重，提升体能</p>
+        <!-- 编辑态（默认隐藏） -->
+        <div id="goal-editor" class="hidden mt-2">
+          <input type="text" id="goal-input" class="w-full px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-sm text-gray-700 outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200" placeholder="输入你的长期目标...">
+          <div class="flex gap-2 mt-2">
+            <button id="goal-save-btn" class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white text-xs rounded-lg cursor-pointer transition-colors">✔️ 保存</button>
+            <button id="goal-cancel-btn" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs rounded-lg cursor-pointer transition-colors">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 一键生成今日健康日报 -->
+      <button id="generate-report-btn" class="w-full mt-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-medium rounded-xl shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"><span>📝</span> 生成今日健康日报</button>
+
+      <!-- 开启新的一天 -->
+      <button id="new-day-btn" class="w-full mt-3 py-2.5 bg-gradient-to-r from-teal-400 to-emerald-500 text-white text-sm font-medium rounded-xl shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none" disabled>
+  <span>🌞</span> 开启新的一天
+</button>
+
+      <!-- 历史会话记录 -->
+      <div class="mt-6 border-t border-gray-100 pt-4">
+        <h3 class="text-xs font-semibold text-gray-400 mb-2 px-1">📜 历史会话记录</h3>
+        <ul id="history-list" class="space-y-2"></ul>
+      </div>
+    </div>
+
+    <div class="px-5 py-3 border-t border-gray-100">
+      <p class="text-xs text-gray-400 text-center">AI 健康管理 Agent v1.0</p>
+    </div>
+  </aside>
+
+  <!-- ========== 右侧：AI 聊天气泡主界面 ========== -->
+  <main class="flex-1 flex flex-col min-w-0 bg-gray-50">
+
+    <header class="bg-white border-b border-gray-100 px-5 py-3.5 flex items-center gap-3 shadow-sm">
+      <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm flex-shrink-0">🤖</div>
+      <div>
+        <h1 class="font-semibold text-gray-800 text-base leading-tight">健康管家 Agent</h1>
+        <p class="text-xs text-gray-400">基于 DeepSeek · 多工具智能体</p>
+      </div>
+      <div class="ml-auto flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-xs text-gray-400">在线</span>
+        <button id="manual-compress-btn" class="ml-4 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium rounded-lg transition-all" disabled>✨ 总结当前对话</button>
+      </div>
+    </header>
+
+    <!-- 注意：横幅已经被移到了 chat 容器外部 -->
+    <div id="history-banner" class="hidden bg-amber-100 text-amber-800 text-xs font-medium py-2.5 px-5 shadow-sm flex justify-between items-center border-b border-amber-200 z-20">
+      <span>⚠️ 当前为历史记录只读模式，无法发送新消息。</span>
+      <button onclick="exitHistoryMode()" class="bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600 cursor-pointer shadow-sm active:scale-95 transition-all">返回当前会话</button>
+    </div>
+
+    <div id="chat" class="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-3">
+      <!-- 里面的 history-banner 已经被删除了 -->
+      <div class="flex flex-col items-center justify-center py-10 text-center" id="welcome-hint">
+        <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mb-3 shadow-sm">
+          <span class="text-3xl">🏥</span>
+        </div>
+        <h2 class="text-lg font-semibold text-gray-700 mb-1">你好，我是你的健康管家</h2>
+        <p class="text-sm text-gray-400 max-w-xs leading-relaxed">你可以向我咨询饮食营养、运动恢复、健康知识，也可以上传食物图片让我帮你分析哦～</p>
+      </div>
+    </div>
+
+    <div id="input-area" class="bg-white border-t border-gray-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,.04)]">
+      <!-- 图片预览容器 -->
+      <div id="image-preview-wrap" class="relative inline-block" style="display:none;">
+        <img id="image-preview" class="max-h-24 rounded-xl border border-gray-200 object-cover shadow-sm" alt="图片预览">
+        <button id="image-remove-btn" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold leading-none hover:scale-110 transition-transform shadow-md cursor-pointer" title="移除图片">×</button>
+      </div>
+      <div class="flex items-end gap-2.5">
+        <input type="file" id="file-input" accept="image/*" class="hidden">
+        <button id="attach-btn" title="上传图片" class="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all duration-150 flex-shrink-0 text-lg cursor-pointer">📎</button>
+        <textarea id="message" rows="1" placeholder="输入你的问题，比如「我今天吃了..." class="flex-1 min-w-0 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm text-gray-800 placeholder-gray-400 outline-none transition-all duration-150 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 resize-none overflow-y-auto custom-scrollbar" style="max-height:120px"></textarea>
+        <button id="send" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium rounded-full transition-all duration-150 flex-shrink-0 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 disabled:active:scale-100 cursor-pointer">发送</button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== JavaScript ==================== -->
+  <script>
+    /* ========== DOM 元素引用 ========== */
+    const chat = document.getElementById("chat");
+    const input = document.getElementById("message");
+    const sendBtn = document.getElementById("send");
+    const attachBtn = document.getElementById("attach-btn");
+    const fileInput = document.getElementById("file-input");
+    const imagePreview = document.getElementById("image-preview");
+    const imagePreviewWrap = document.getElementById("image-preview-wrap");
+    const imageRemoveBtn = document.getElementById("image-remove-btn");
+
+    /* ========== Modal 焦点陷阱 (Focus Trap) 修复 Tab 穿透 Bug ========== */
+    const profileModal = document.getElementById("profile-modal");
+    const focusableElements = profileModal.querySelectorAll('input, select, button');
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    profileModal.addEventListener("keydown", function(e) {
+      if (e.key === "Tab") {
+        if (e.shiftKey) { // 按了 Shift + Tab (往回跳)
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else { // 只按了 Tab (往下跳)
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    });
+
+    /* ========== 打卡弹窗 焦点陷阱 (Focus Trap) ========== */
+    const checkinModal = document.getElementById("daily-checkin-modal");
+    const checkinFocusable = checkinModal.querySelectorAll('input, button');
+    const checkinFirst = checkinFocusable[0];
+    const checkinLast = checkinFocusable[checkinFocusable.length - 1];
+
+    checkinModal.addEventListener("keydown", function(e) {
+      if (e.key === "Tab") {
+        if (e.shiftKey) { // 按了 Shift + Tab (往回跳)
+          if (document.activeElement === checkinFirst) {
+            e.preventDefault();
+            checkinLast.focus();
+          }
+        } else { // 只按了 Tab (往下跳)
+          if (document.activeElement === checkinLast) {
+            e.preventDefault();
+            checkinFirst.focus();
+          }
+        }
+      }
+    });
+
+    let pendingImageBase64 = null;
+
+    /* ========== 历史模式 & 会话历史 ========== */
+    let isHistoryMode = false;
+    let activeChatCache = "";
+    let sessionHistory = JSON.parse(sessionStorage.getItem("healthSessionHistory") || "[]");
+
+    /* ========== 会话隔离：生成或读取 sessionId ========== */
+    const sessionId = sessionStorage.getItem("sessionId") || Math.random().toString(36).substring(2, 15);
+    sessionStorage.setItem("sessionId", sessionId);
+
+    /* ========== 个性档案 + UUID 线程隔离 ========== */
+    let userProfile = null;
+    let currentDailyLog = null;
+    let currentExerciseTarget = "无";
+    let threadId = sessionStorage.getItem("healthAgentThreadId");
+    const savedProfile = sessionStorage.getItem("healthAgentProfile");
+    const savedDailyLog = sessionStorage.getItem("healthAgentDailyLog");
+
+    if (threadId && savedProfile) {
+      try {
+        userProfile = JSON.parse(savedProfile);
+        document.getElementById("profile-modal").classList.add("hidden");
+      } catch (e) {
+        userProfile = null;
+        threadId = null;
+      }
+    } else {
+      document.getElementById("profile-modal").classList.remove("hidden");
+    }
+
+    if (savedDailyLog) {
+      try {
+        currentDailyLog = JSON.parse(savedDailyLog);
+        currentExerciseTarget = currentDailyLog.exercise_target || "无";
+      } catch (e) {
+        currentDailyLog = null;
+      }
+    }
+
+    /* ========== 刷新仪表盘渲染 ========== */
+    function refreshDashboard() {
+      const bmrEl = document.getElementById("dashboard-bmr");
+      const heightEl = document.getElementById("dashboard-height");
+      const weightEl = document.getElementById("dashboard-weight");
+      const nameEl = document.getElementById("dashboard-name");
+
+      if (userProfile) {
+        if (bmrEl && userProfile.bmr != null) bmrEl.textContent = Math.round(userProfile.bmr);
+        if (heightEl && userProfile.height != null) heightEl.textContent = "身高 " + userProfile.height + "cm";
+        if (weightEl && userProfile.weight != null) weightEl.textContent = "体重 " + userProfile.weight + "kg";
+        if (nameEl && userProfile.age != null) nameEl.textContent = userProfile.age + "岁 · 专属健康档案";
+      }
+
+      const recoveryEl = document.getElementById("dashboard-recovery");
+      const recoveryBadge = document.getElementById("dashboard-recovery-badge");
+      const sleepFatigueEl = document.getElementById("dashboard-sleep-fatigue");
+
+      if (currentDailyLog && currentDailyLog.recovery_score != null) {
+        const rs = parseFloat(currentDailyLog.recovery_score);
+        if (recoveryEl) recoveryEl.textContent = rs.toFixed(1);
+        if (sleepFatigueEl) sleepFatigueEl.textContent = "睡眠 " + currentDailyLog.sleep_hours + "h · 疲劳 " + currentDailyLog.fatigue_level + "/10";
+        if (recoveryBadge) {
+          if (rs >= 80) { recoveryBadge.textContent = "优秀"; recoveryBadge.className = "inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"; }
+          else if (rs >= 60) { recoveryBadge.textContent = "良好"; recoveryBadge.className = "inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700"; }
+          else if (rs >= 40) { recoveryBadge.textContent = "一般"; recoveryBadge.className = "inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700"; }
+          else { recoveryBadge.textContent = "需改善"; recoveryBadge.className = "inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700"; }
+        }
+      }
+
+      document.getElementById("exercise-display").textContent = currentExerciseTarget || "无";
+    }
+
+    // 页面加载时刷新
+    if (userProfile || currentDailyLog) refreshDashboard();
+
+    /* ========== 疲劳程度动态提示 ========== */
+    document.getElementById("profile-fatigue").addEventListener("change", function() {
+      const lv = parseInt(this.value);
+      const hint = document.getElementById("fatigue-hint");
+      if (lv <= 3) {
+        hint.textContent = "轻度疲劳 — 精力充沛，适合高强度训练";
+        hint.className = "text-xs text-emerald-500 mt-1";
+      } else if (lv <= 6) {
+        hint.textContent = "中度疲劳 — 略有疲惫，建议适量运动";
+        hint.className = "text-xs text-amber-500 mt-1";
+      } else {
+        hint.textContent = "重度疲劳 — 需要休息恢复，避免剧烈运动";
+        hint.className = "text-xs text-red-500 mt-1";
+      }
+    });
+
+    /* ========== Modal 表单提交 → 计算 BMR + 恢复评分 ========== */
+    document.getElementById("profile-form").addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      const age = parseInt(document.getElementById("profile-age").value);
+      const height = parseFloat(document.getElementById("profile-height").value);
+      const weight = parseFloat(document.getElementById("profile-weight").value);
+      const goal = document.getElementById("profile-goal").value;
+      const sleepHours = parseFloat(document.getElementById("profile-sleep").value);
+      const fatigueLevel = parseInt(document.getElementById("profile-fatigue").value);
+      const exerciseTarget = document.getElementById("profile-exercise").value.trim() || "无";
+
+      if (!age || !height || !weight || !goal || isNaN(sleepHours) || isNaN(fatigueLevel)) return;
+
+      // BMR = 10*体重 + 6.25*身高 - 5*年龄 + 5
+      const bmr = Math.round(10 * weight + 6.25 * height - 5 * age + 5);
+
+      // sleep_score = min(睡眠/8, 1) * 100
+      const sleepScore = Math.min(sleepHours / 8.0, 1.0) * 100;
+      // fatigue_score = (11 - 疲劳等级) / 10 * 100
+      const fatigueScore = ((11 - fatigueLevel) / 10.0) * 100;
+      const recoveryScore = parseFloat((0.6 * sleepScore + 0.4 * fatigueScore).toFixed(1));
+
+      threadId = crypto.randomUUID();
+
+      userProfile = { age, height, weight, bmr, goal };
+      currentDailyLog = {
+        sleep_hours: sleepHours,
+        fatigue_level: fatigueLevel,
+        recovery_score: recoveryScore,
+        exercise_target: exerciseTarget
+      };
+      currentExerciseTarget = exerciseTarget;
+
+      sessionStorage.setItem("healthAgentThreadId", threadId);
+      sessionStorage.setItem("healthAgentProfile", JSON.stringify(userProfile));
+      sessionStorage.setItem("healthAgentDailyLog", JSON.stringify(currentDailyLog));
+      sessionStorage.setItem("healthAgentGoal", goal);
+
+      currentLongTermGoal = goal;
+      document.getElementById("goal-display").textContent = goal;
+
+      refreshDashboard();
+      document.getElementById("profile-modal").classList.add("hidden");
+    });
+
+    /* ========== 优化3：长期目标变量（同步到 API） ========== */
+    let currentLongTermGoal = (userProfile && userProfile.goal) || "保持健康体重，提升体能";
+
+    /* ========== 附件逻辑 ========== */
+    attachBtn.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        hidePreview();
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        pendingImageBase64 = reader.result;
+        imagePreview.src = pendingImageBase64;
+        imagePreviewWrap.style.display = "inline-block";
+        attachBtn.classList.add("has-file");
+        attachBtn.title = "已选择图片，点击可重新选择";
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function hidePreview() {
+      pendingImageBase64 = null;
+      imagePreview.src = "";
+      imagePreviewWrap.style.display = "none";
+      fileInput.value = "";
+      attachBtn.classList.remove("has-file");
+      attachBtn.title = "上传图片";
+    }
+
+    /* ========== Bug 2：图片删除按钮 ========== */
+    imageRemoveBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      hidePreview();
+    });
+
+    /* ========== 聊天气泡（不动） ========== */
+    function addMsg(cls, contentHTML) {
+      const row = document.createElement("div");
+      row.className = "msg-row " + cls;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = contentHTML;
+      row.appendChild(bubble);
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
+      return bubble;
+    }
+
+    /* ========== 聊天记录持久化（sessionStorage） ========== */
+    function saveChatHistory() {
+      try {
+        sessionStorage.setItem("healthAgentChat", chat.innerHTML);
+      } catch (e) { /* quota 满时忽略 */ }
+    }
+
+    /* ========== 发送逻辑 ========== */
+    async function send() {
+      // 历史模式下禁止发送
+      if (isHistoryMode) return;
+
+      const text = input.value.trim();
+      const imageBase64 = pendingImageBase64;
+      if (!text && !imageBase64) return;
+
+      // 锁定发送按钮和输入框，防止重复发送
+      sendBtn.disabled = true;
+      input.disabled = true;
+      sendBtn.textContent = "生成中...";
+
+      input.value = "";
+      // textarea 值清空后手动重置高度
+      input.style.height = "auto";
+      hidePreview();
+
+      let userHTML = "";
+      if (imageBase64) {
+        userHTML += `<img class="thumb-preview" src="${imageBase64}" alt="用户上传图片">`;
+      }
+      if (text) {
+        userHTML += escapeHTML(text);
+      } else {
+        userHTML += "[图片]";
+      }
+      addMsg("user", userHTML);
+      saveChatHistory();
+
+      const botBubble = addMsg("bot", "思考中…");
+
+      try {
+        // ========== Payload：完整 thread_id + user_profile + daily_log ==========
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text || "",
+            image_base64: imageBase64 || null,
+            long_term_goal: currentLongTermGoal,
+            session_id: sessionId,
+            thread_id: sessionStorage.getItem("healthAgentThreadId") || null,
+            user_profile: userProfile || null,
+            daily_log: currentDailyLog || null,
+          }),
+        });
+
+        if (!res.ok) {
+          botBubble.innerHTML = "❌ 请求失败 (" + res.status + ")";
+          return;
+        }
+
+        botBubble.innerHTML = "";
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          fullText += decoder.decode(value, { stream: true });
+          botBubble.innerHTML = marked.parse(fullText);
+          // ========== Bug 1：智能滚动 — 仅在用户处于底部时跟随 ==========
+          const isNearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 100;
+          if (isNearBottom) {
+            chat.scrollTop = chat.scrollHeight;
+          }
+        }
+        // ========== 轮次检测：第 13 轮时显示压缩警告 ==========
+        const roundCount = chat.querySelectorAll('.msg-row.user').length;
+        if (roundCount === 13 && !document.getElementById("memory-warning")) {
+          const warningDiv = document.createElement("div");
+          warningDiv.id = "memory-warning";
+          warningDiv.className = "flex justify-center my-4";
+          warningDiv.style.animation = "fadeInUp .3s ease-out";
+          warningDiv.innerHTML = '\n    <div class="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2.5 rounded-xl text-xs flex items-center gap-3 shadow-sm">\n      <span>⚠️ 当前对话已达 13 轮，为保证管家的记忆质量，建议进行记忆压缩。</span>\n      <button id="compress-btn" class="bg-amber-500 hover:bg-amber-600 active:scale-95 text-white px-3 py-1.5 rounded-lg transition-all font-medium cursor-pointer">✨ 压缩并开启新周期</button>\n    </div>\n  ';
+          chat.appendChild(warningDiv);
+          chat.scrollTop = chat.scrollHeight;
+        }
+        saveChatHistory();
+        checkCompressButtonState();
+      } catch (err) {
+        botBubble.innerHTML = "❌ 网络错误: " + escapeHTML(err.message);
+        saveChatHistory();
+      } finally {
+        // 恢复发送按钮和输入框
+        sendBtn.disabled = false;
+        input.disabled = false;
+        sendBtn.textContent = "发送";
+        input.focus();
+      }
+    }
+
+    function escapeHTML(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+   /* ========== 记忆压缩：对话满 13 轮后触发 / 手动触发 ========== */
+    async function compressMemory() {
+      const autoBtn = document.getElementById("compress-btn");
+      const manualBtn = document.getElementById("manual-compress-btn");
+
+      // ---- 步骤 A：请求摘要 ----
+      // 改变触发按钮的 UI 状态
+      if (autoBtn) {
+        autoBtn.textContent = "正在生成摘要...";
+        autoBtn.disabled = true;
+      }
+      if (manualBtn) {
+        manualBtn.textContent = "摘要生成中...";
+        manualBtn.disabled = true;
+      }
+
+      let summaryText = "";
+      try {
+        const currentThreadId = sessionStorage.getItem("healthAgentThreadId") || threadId;
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "【系统指令】：当前对话周期即将结束。请用一段精炼的话，总结本周期内我的核心健康数据、饮食记录以及你的核心建议，作为下一阶段的记忆存档。",
+            image_base64: null,
+            long_term_goal: currentLongTermGoal,
+            session_id: sessionId,
+            thread_id: currentThreadId,
+            user_profile: userProfile || null,
+            daily_log: currentDailyLog || null,
+          }),
+        });
+
+        if (!res.ok) throw new Error("Summary request failed: " + res.status);
+
+        // ---- 步骤 B：读取流式结果 ----
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          summaryText += decoder.decode(value, { stream: true });
+        }
+      } catch (err) {
+        console.error("记忆压缩失败:", err);
+        // 如果失败了，恢复按钮状态
+        if (autoBtn) {
+          autoBtn.textContent = "✨ 压缩并开启新周期";
+          autoBtn.disabled = false;
+        }
+        if (manualBtn) {
+          manualBtn.textContent = "✨ 总结当前对话";
+          manualBtn.disabled = false;
+        }
+        return;
+      }
+
+      // ---- 新增：保存历史记录 ----
+      // 1. 将摘要气泡追加到当前聊天框（标记旧对话完结）
+      addMsg("bot", "<strong>📋 会话总结：</strong><br>" + escapeHTML(summaryText));
+
+      // 2. 存档：旧 threadId + 时间戳 + 完整聊天 HTML
+      const now = new Date();
+      const timestamp = String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0") + " " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+      sessionHistory.push({
+        threadId: sessionStorage.getItem("healthAgentThreadId") || threadId,
+        timestamp: timestamp,
+        html: chat.innerHTML,
+      });
+      try { sessionStorage.setItem("healthSessionHistory", JSON.stringify(sessionHistory)); } catch (e) {}
+
+      // 3. 刷新左侧历史列表
+      renderHistoryList();
+
+      // ---- 步骤 C：切核换代（核心隔离） ----
+      threadId = crypto.randomUUID();
+      sessionStorage.setItem("healthAgentThreadId", threadId);
+      chat.innerHTML = "";
+
+      // ---- 步骤 D：静默注入新记忆 ----
+      try {
+        const injectRes = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "【系统背景设定，请记住并简短回复'已继承'】：这是上个周期的记忆摘要：\n" + summaryText,
+            image_base64: null,
+            long_term_goal: currentLongTermGoal,
+            session_id: sessionId,
+            thread_id: threadId,
+            user_profile: userProfile || null,
+            daily_log: currentDailyLog || null,
+          }),
+        });
+
+        // 静默消费后端返回，不展示给用户
+        if (injectRes.ok && injectRes.body) {
+          const reader = injectRes.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            /* 静默消费，不显示 */
+          }
+        }
+      } catch (err) {
+        console.error("静默记忆注入失败:", err);
+      }
+
+      // ---- 步骤 E：恢复界面，显示系统提示气泡 ----
+      const row = document.createElement("div");
+      row.className = "msg-row bot";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = "♻️ <strong>上期记忆已成功压缩并继承！</strong> 新的健康周期已开启。上期摘要：<br><span class='text-gray-500'>" + escapeHTML(summaryText) + "</span>";
+      row.appendChild(bubble);
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
+
+      saveChatHistory();
+      
+      // 恢复手动按钮的文本，并重新校验防呆状态（因为聊天框被清空，它会自动变成灰色禁用状态）
+      if (manualBtn) manualBtn.textContent = "✨ 总结当前对话";
+      checkCompressButtonState(); 
+    }
+
+    // 事件代理：动态注入的压缩按钮通过 chat 容器委托点击
+    chat.addEventListener("click", function(e) {
+      if (e.target && e.target.id === "compress-btn") {
+        e.preventDefault();
+        compressMemory();
+      }
+    });
+
+    /* ========== 防呆校验：根据轮次数控制相关功能按钮状态 ========== */
+    function checkCompressButtonState() {
+      const compressBtn = document.getElementById("manual-compress-btn");
+      const newDayBtn = document.getElementById("new-day-btn");
+      
+      const roundCount = chat.querySelectorAll('.msg-row.user').length;
+      const isValid = roundCount > 0 && !isHistoryMode; // 必须有用户发言且不是历史模式
+      
+      if (compressBtn) compressBtn.disabled = !isValid;
+      if (newDayBtn) newDayBtn.disabled = !isValid;
+    }
+
+    /* ========== 手动总结按钮事件 ========== */
+    document.getElementById("manual-compress-btn").addEventListener("click", () => {
+      compressMemory();
+    });
+
+    /* ========== "开启新的一天" 打卡流转 ========== */
+    document.getElementById("new-day-btn").addEventListener("click", async () => {
+      if (isHistoryMode) return showToast("历史模式下无法操作");
+      // 1. 弹出打卡弹窗
+      document.getElementById("daily-checkin-modal").classList.remove("hidden");
+      setTimeout(() => document.getElementById("checkin-sleep").focus(), 100);
+      // 预填历史数据
+      if (currentDailyLog) {
+        document.getElementById("checkin-sleep").value = currentDailyLog.sleep_hours || 7;
+        document.getElementById("checkin-fatigue").value = currentDailyLog.fatigue_level || 5;
+      }
+    });
+
+    // 提交每日打卡
+    document.getElementById("daily-checkin-form").addEventListener("submit", async function(e) {
+      e.preventDefault();
+      const sleepHours = parseFloat(document.getElementById("checkin-sleep").value);
+      const fatigueLevel = parseInt(document.getElementById("checkin-fatigue").value);
+
+      // 重新计算恢复评分
+      const sleepScore = Math.min(sleepHours / 8.0, 1.0) * 100;
+      const fatigueScore = ((11 - fatigueLevel) / 10.0) * 100;
+      const recoveryScore = parseFloat((0.6 * sleepScore + 0.4 * fatigueScore).toFixed(1));
+
+      // 更新全局变量和缓存
+      if (!currentDailyLog) currentDailyLog = {};
+      currentDailyLog.sleep_hours = sleepHours;
+      currentDailyLog.fatigue_level = fatigueLevel;
+      currentDailyLog.recovery_score = recoveryScore;
+      // 运动目标保留昨天的，或者可以后续自己改
+
+      sessionStorage.setItem("healthAgentDailyLog", JSON.stringify(currentDailyLog));
+      refreshDashboard();
+      document.getElementById("daily-checkin-modal").classList.add("hidden");
+
+      // 如果当前有聊天记录，强制归档昨天的数据并开启新线程
+      if (chat.querySelectorAll('.msg-row.user').length > 0) {
+        await compressMemory();
+      }
+
+      // 注入一条醒目的绿色的系统通知气泡
+      addMsg("bot", "☀️ <strong>新的一天已开启！</strong><br>已获取你最新的睡眠和疲劳数据。今天的恢复评分为 <strong>" + recoveryScore + "</strong> 分，有什么我可以帮你的？");
+      saveChatHistory();
+      checkCompressButtonState();
+    });
+
+   /* ========== 渲染左侧历史会话列表（含删除功能） ========== */
+    function renderHistoryList() {
+      const list = document.getElementById("history-list");
+      if (!list) return;
+      list.innerHTML = "";
+      sessionHistory.forEach((item, index) => {
+        const li = document.createElement("li");
+        li.className = "flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer group";
+        
+        // 列表左侧文本（点击查看历史）
+        const textSpan = document.createElement("span");
+        textSpan.className = "text-xs text-gray-700 flex-1";
+        textSpan.innerHTML = '对话 ' + (index + 1) + ' <span class="text-gray-400 ml-1">' + item.timestamp + '</span>';
+        textSpan.addEventListener("click", () => viewHistory(index));
+
+        // 列表右侧操作区（查看箭头 + 删除按钮）
+        const actionDiv = document.createElement("div");
+        actionDiv.className = "flex items-center gap-2";
+        
+        const viewSpan = document.createElement("span");
+        viewSpan.className = "text-indigo-500 text-xs";
+        viewSpan.innerText = "查看 →";
+        viewSpan.addEventListener("click", () => viewHistory(index));
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity text-xs cursor-pointer";
+        delBtn.innerText = "🗑️";
+        delBtn.title = "删除此记录";
+        delBtn.addEventListener("click", (e) => {
+          e.stopPropagation(); // 阻止冒泡，避免触发查看历史事件
+          deleteHistory(index);
+        });
+
+        actionDiv.appendChild(viewSpan);
+        actionDiv.appendChild(delBtn);
+        
+        li.appendChild(textSpan);
+        li.appendChild(actionDiv);
+        list.appendChild(li);
+      });
+    }
+
+    /* ========== 删除历史对话记录 ========== */
+    function deleteHistory(index) {
+      if (!confirm("确定要删除这条历史记录吗？删除后无法恢复。")) return;
+      
+      // 如果当前刚好在历史模式下，强制退回当前会话，防止DOM错乱
+      if (isHistoryMode) {
+        exitHistoryMode();
+      }
+
+      sessionHistory.splice(index, 1); // 剔除数据
+      try { sessionStorage.setItem("healthSessionHistory", JSON.stringify(sessionHistory)); } catch (e) {}
+      renderHistoryList(); // 重新渲染列表
+    }
+
+    /* ========== 查看历史对话（只读沙盒） ========== */
+    function viewHistory(index) {
+      if (index < 0 || index >= sessionHistory.length) return;
+      
+      // 【核心修复】：只有在真实对话模式下，才允许更新缓存。
+      // 防止在不同的历史记录间横跳时，把历史记录覆盖到真实缓存中。
+      if (!isHistoryMode) {
+        activeChatCache = chat.innerHTML;
+      }
+      
+      isHistoryMode = true;
+      chat.innerHTML = sessionHistory[index].html;
+      document.getElementById("history-banner").classList.remove("hidden");
+      
+      const inputEl = document.getElementById("message");
+      const sendButtonEl = document.getElementById("send");
+      inputEl.disabled = true;
+      sendButtonEl.disabled = true;
+      inputEl.placeholder = "历史模式下无法发送消息";
+      chat.scrollTop = 0;
+      checkCompressButtonState();
+    }
+
+    /* ========== 退出历史模式 ========== */
+    function exitHistoryMode() {
+      isHistoryMode = false;
+      chat.innerHTML = activeChatCache || "";
+      document.getElementById("history-banner").classList.add("hidden");
+      const inputEl = document.getElementById("message");
+      inputEl.disabled = false;
+      inputEl.value = ""; // 强行清空残留输入
+      inputEl.placeholder = "输入你的问题，比如「我今天吃了...";
+      document.getElementById("send").disabled = false;
+      chat.scrollTop = chat.scrollHeight;
+      checkCompressButtonState();
+    }
+
+    sendBtn.addEventListener("click", send);
+
+    /* ========== 一键生成今日健康日报 ========== */
+    document.getElementById("generate-report-btn").addEventListener("click", () => {
+      if (isHistoryMode) {
+        showToast("⚠️ 当前为历史记录只读模式");
+        return;
+      }
+      const reportPrompt = "请根据我今天的身体数据、运动目标达成情况、恢复评分以及聊天记录中的饮食情况，为我生成一份结构化的【今日健康总结日报】。请用 Markdown 格式，务必包含：1. 营养与热量评估 2. 疲劳与恢复点评 3. 明日行动建议。";
+      const chatInput = document.getElementById("message");
+      chatInput.value = reportPrompt;
+      document.getElementById("send").click();
+    });
+
+    /* ========== 优化2：textarea 键盘事件 ========== */
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (sendBtn.disabled) return; // 发送中则忽略回车
+        send();
+      }
+    });
+
+    /* ========== 优化2（加分项）：textarea 自动长高，最大 120px ========== */
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 120) + "px";
+    });
+
+    /* ========== 长期目标编辑（含 Esc 取消 + 同步到 API） ========== */
+    const goalDisplay = document.getElementById("goal-display");
+    const goalEditor = document.getElementById("goal-editor");
+    const goalInput = document.getElementById("goal-input");
+
+    function cancelGoalEdit() {
+      goalDisplay.classList.remove("hidden");
+      goalEditor.classList.add("hidden");
+    }
+
+    document.getElementById("goal-edit-btn").addEventListener("click", () => {
+      goalInput.value = goalDisplay.textContent;
+      goalDisplay.classList.add("hidden");
+      goalEditor.classList.remove("hidden");
+      goalInput.focus();
+    });
+
+    document.getElementById("goal-save-btn").addEventListener("click", () => {
+      const val = goalInput.value.trim();
+      if (val) {
+        goalDisplay.textContent = val;
+        currentLongTermGoal = val;
+        try { sessionStorage.setItem("healthAgentGoal", val); } catch (e) {}
+        // 同步到档案对象
+        if (userProfile) {
+          userProfile.goal = val;
+          try { sessionStorage.setItem("healthAgentProfile", JSON.stringify(userProfile)); } catch (e) {}
+        }
+      }
+      cancelGoalEdit();
+    });
+
+    document.getElementById("goal-cancel-btn").addEventListener("click", cancelGoalEdit);
+
+    /* ========== 目标编辑键盘事件：Esc取消 / Enter保存 ========== */
+    goalInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") cancelGoalEdit();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        document.getElementById("goal-save-btn").click();
+      }
+    });
+
+    /* ========== Toast 通知工具函数 ========== */
+    function showToast(msg) {
+      const toast = document.getElementById("toast");
+      toast.textContent = msg;
+      toast.classList.remove("opacity-0", "-translate-y-5", "pointer-events-none");
+      toast.classList.add("opacity-100", "translate-y-0");
+      clearTimeout(toast._timeout);
+      toast._timeout = setTimeout(() => {
+        toast.classList.add("opacity-0", "-translate-y-5", "pointer-events-none");
+        toast.classList.remove("opacity-100", "translate-y-0");
+      }, 3000);
+    }
+
+    /* ========== 运动目标非健康关键词黑名单 ========== */
+    const nonExerciseKeywords = [
+      "写代码", "编程", "炒股", "投资", "理财", "打游戏", "玩游戏", "游戏", "网吧", "英雄联盟", "王者荣耀",
+      "看电影", "追剧", "刷手机", "加班", "开会", "写作业", "考试",
+      "复习", "背单词", "逛街", "购物", "喝酒", "抽烟", "打牌",
+      "打麻将", "KTV", "唱歌", "躺着", "摸鱼", "划水", "睡懒觉",
+      "吃大餐", "吃火锅", "吃烧烤", "旅游", "看小说"
+    ];
+
+    function isNonExerciseText(val) {
+      if (!val || val === "无") return false;
+      return nonExerciseKeywords.some(kw => val.includes(kw));
+    }
+
+    /* ========== 今日运动目标编辑逻辑 ========== */
+    const exerciseDisplay = document.getElementById("exercise-display");
+    const exerciseEditor = document.getElementById("exercise-editor");
+    const exerciseInput = document.getElementById("exercise-input");
+
+    function cancelExerciseEdit() {
+      exerciseDisplay.classList.remove("hidden");
+      exerciseEditor.classList.add("hidden");
+    }
+
+    document.getElementById("exercise-edit-btn").addEventListener("click", () => {
+      exerciseInput.value = exerciseDisplay.textContent === "无" ? "" : exerciseDisplay.textContent;
+      exerciseDisplay.classList.add("hidden");
+      exerciseEditor.classList.remove("hidden");
+      exerciseInput.focus();
+    });
+
+    document.getElementById("exercise-save-btn").addEventListener("click", () => {
+      const val = exerciseInput.value.trim();
+      if (isNonExerciseText(val)) {
+        showToast("⚠️ 请输入与运动健康相关的目标！");
+        currentExerciseTarget = "无";
+        exerciseDisplay.textContent = "无";
+        if (currentDailyLog) {
+          currentDailyLog.exercise_target = "无";
+          try { sessionStorage.setItem("healthAgentDailyLog", JSON.stringify(currentDailyLog)); } catch (e) {}
+        }
+        cancelExerciseEdit();
+        return;
+      }
+      if (val) {
+        currentExerciseTarget = val;
+        exerciseDisplay.textContent = val;
+        if (currentDailyLog) {
+          currentDailyLog.exercise_target = val;
+          try { sessionStorage.setItem("healthAgentDailyLog", JSON.stringify(currentDailyLog)); } catch (e) {}
+        }
+      }
+      cancelExerciseEdit();
+    });
+
+    document.getElementById("exercise-cancel-btn").addEventListener("click", cancelExerciseEdit);
+
+    exerciseInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") cancelExerciseEdit();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        document.getElementById("exercise-save-btn").click();
+      }
+    });
+
+    /* ========== Lightbox：图片放大 + 滚轮缩放 + Esc关闭（动态获取 DOM） ========== */
+    let currentScale = 1;
+
+    function getLightboxElements() {
+      return {
+        box: document.getElementById("lightbox"),
+        img: document.getElementById("lightbox-img"),
+        closeBtn: document.getElementById("lightbox-close")
+      };
+    }
+
+    function closeLightbox() {
+      const { box, img } = getLightboxElements();
+      if (!box || !img) return;
+      currentScale = 1;
+      img.style.transform = "scale(1)";
+      box.classList.add("hidden");
+    }
+
+    /* 全局点击事件代理：打开 + 关闭 */
+    document.addEventListener("click", function(e) {
+      const { box, img, closeBtn } = getLightboxElements();
+
+      // 1. 打开大图
+      if (e.target && e.target.classList.contains("thumb-preview")) {
+        if (!box || !img) return;
+        img.src = e.target.src;
+        currentScale = 1;
+        img.style.transform = "scale(1)";
+        box.classList.remove("hidden");
+        return;
+      }
+
+      // 2. 关闭大图（点击遮罩背景 或 关闭按钮）
+      if (box && !box.classList.contains("hidden")) {
+        if (e.target === box || e.target === closeBtn) {
+          closeLightbox();
+        }
+      }
+    });
+
+    /* Esc 键关闭 */
+    document.addEventListener("keydown", function(e) {
+      const { box } = getLightboxElements();
+      if (e.key === "Escape" && box && !box.classList.contains("hidden")) {
+        closeLightbox();
+      }
+    });
+
+    /* 滚轮缩放（全局代理，仅对 lightbox-img 生效） */
+    document.addEventListener("wheel", function(e) {
+      const { box, img } = getLightboxElements();
+      if (box && !box.classList.contains("hidden") && e.target === img) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.15 : 0.15;
+        currentScale = Math.min(4, Math.max(0.5, currentScale + delta));
+        img.style.transform = "scale(" + currentScale + ")";
+      }
+    }, { passive: false });
+
+    /* ========== 页面加载时恢复聊天记录 & 长期目标 & 档案仪表盘 ========== */
+    (function restoreState() {
+      // 恢复聊天记录
+      const savedChat = sessionStorage.getItem("healthAgentChat");
+      if (savedChat) {
+        chat.innerHTML = savedChat;
+        chat.scrollTop = chat.scrollHeight;
+      }
+      // 恢复长期目标
+      const savedGoal = sessionStorage.getItem("healthAgentGoal");
+      if (savedGoal) {
+        currentLongTermGoal = savedGoal;
+        document.getElementById("goal-display").textContent = savedGoal;
+      }
+      // 恢复运动目标
+      if (currentExerciseTarget && currentExerciseTarget !== "无") {
+        document.getElementById("exercise-display").textContent = currentExerciseTarget;
+      }
+      // 刷新仪表盘
+      refreshDashboard();
+      // 初始防呆 + 历史列表渲染
+      checkCompressButtonState();
+      renderHistoryList();
+    })();
+  </script>
+
+  <!-- ========== Lightbox 遮罩层（图片点击放大 + 滚轮缩放） ========== -->
+  <div id="lightbox" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center cursor-pointer">
+    <span id="lightbox-close" class="absolute top-5 right-5 text-white text-3xl font-bold cursor-pointer hover:text-gray-300">&times;</span>
+    <img id="lightbox-img" class="max-h-[90%] max-w-[90%] rounded-lg shadow-lg transition-transform duration-100" src="" alt="大图">
+  </div>
+
+</body>
+</html>

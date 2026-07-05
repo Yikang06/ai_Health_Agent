@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 向量数据库（本地数据，不提交）
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
+.codebuddy/
+
+# 导出文件（自动生成的结构文件）
+project_structure*.md
+Structure.md
+
+# 环境变量
+.env

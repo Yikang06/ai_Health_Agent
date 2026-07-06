@@ -75,7 +75,7 @@ docker build -t health-agent .
 
 # 启动容器
 docker run -d -p 8000:8000 --name my-health-agent health-agent
-
+```
 📁 目录结构 (Directory Structure):
 
 详见根目录文件 Structure.md
@@ -84,4 +84,9 @@ docker run -d -p 8000:8000 --name my-health-agent health-agent
 🛡️ 安全与边界控制
 系统在 Agent 层面加入了严格的防越狱（Jailbreak）机制。针对非健康/运动/营养相关的用户提问（如编程、政治、金融等），Agent 将触发系统级防御并拒绝回答，确保垂直应用场景的专业性与合规性。
 
+### 💡 常见问题 (FAQ)
 
+**Q: Docker 容器启动后，构建知识库卡住或报错网络连接失败？**
+A: 本项目首次构建知识库时，会下载 `BAAI/bge-small-zh-v1.5` 嵌入模型。国内用户如果遇到 Hugging Face 连通性问题，请在宿主机或容器内设置镜像源环境变量后重试：
+`export HF_ENDPOINT=https://hf-mirror.com`
+*(如果是在 Windows PowerShell，请使用 `$env:HF_ENDPOINT="https://hf-mirror.com"`)*

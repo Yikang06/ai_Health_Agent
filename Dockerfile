@@ -16,8 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 复制依赖文件并安装
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+# 1. 强行指定双源：主源找 CPU 版 Torch，备用源（阿里云）找辅助依赖，完美绕过官方元数据错误
+RUN pip install --no-cache-dir --default-timeout=1000 torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --extra-index-url http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 
+# 2. 从阿里云高速安装剩余的其他依赖
+RUN pip install --no-cache-dir --default-timeout=1000 -r requirements.txt -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 # 复制项目所有文件到工作目录
 COPY . .
 

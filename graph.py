@@ -304,10 +304,16 @@ def agent_node(state: HealthState) -> dict:
 
 
 # ------------------------------------------------------------
-# 4. tools 节点 —— 标准 ToolNode
+# 4. tools 节点 —— 标准 ToolNode (使用包装层，彻底免疫版本冲突 Bug)
 # ------------------------------------------------------------
-tool_node = ToolNode(tools, messages_key="chat_history")
+_base_tool_node = ToolNode(tools)
 
+def tool_node(state: HealthState) -> dict:
+    """包装器：将我们的 chat_history 伪装成 messages 喂给旧版 ToolNode"""
+    # 1. 投其所好：用它唯一认识的 "messages" 键传给它
+    res = _base_tool_node.invoke({"messages": state["chat_history"]})
+    # 2. 瞒天过海：拿到结果后，再转换回我们的 "chat_history" 键返回给系统
+    return {"chat_history": res["messages"]}
 
 # ------------------------------------------------------------
 # 5. state_update 节点 —— 将工具返回的食物数据写入 diet_intake
@@ -322,7 +328,7 @@ def state_update_node(state: HealthState) -> dict:
     - 如果来自 calculate_nutrition，解析返回的食物数据追加到 diet_intake
     - 其他工具（如 evaluate_recovery_score）不做状态写入
     """
-    result = {}  # 空字典 = 不更新任何字段
+    result = {}  # 默认空字典
 
     for msg in reversed(state["chat_history"]):
         if not isinstance(msg, ToolMessage):
@@ -344,8 +350,13 @@ def state_update_node(state: HealthState) -> dict:
             except (json.JSONDecodeError, TypeError):
                 pass  # 解析失败则跳过，不写入
 
-    return result
+    # 【核心修复点】：应对新版 LangGraph 的严格校验
+    # 如果没有任何实质性更新，不能返回 {}，否则会报 InvalidUpdateError
+    # 这里我们利用 chat_history 的 operator.add 特性，返回一个空列表，既合法又不会产生任何副作用
+    if not result:
+        return {"chat_history": []}
 
+    return result
 
 # ------------------------------------------------------------
 # 6. 条件边 —— 实现 ReAct 循环

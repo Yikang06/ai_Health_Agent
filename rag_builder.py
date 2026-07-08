@@ -15,6 +15,7 @@ from pathlib import Path
 # 【新增】关闭 HuggingFace 联网更新检查与遥测，消除警告并提速
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"  # 强制 HuggingFace 走国内镜像站！
 
 import chromadb
 from chromadb.utils import embedding_functions

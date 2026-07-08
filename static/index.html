@@ -282,13 +282,10 @@
     </div>
 
     <div id="input-area" class="bg-white border-t border-gray-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,.04)]">
-      <!-- 图片预览容器 -->
-      <div id="image-preview-wrap" class="relative inline-block" style="display:none;">
-        <img id="image-preview" class="max-h-24 rounded-xl border border-gray-200 object-cover shadow-sm" alt="图片预览">
-        <button id="image-remove-btn" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold leading-none hover:scale-110 transition-transform shadow-md cursor-pointer" title="移除图片">×</button>
-      </div>
+      <!-- 多图预览容器 -->
+      <div id="image-preview-container" class="hidden px-1 pt-2 pb-1 flex flex-wrap gap-2"></div>
       <div class="flex items-end gap-2.5">
-        <input type="file" id="file-input" accept="image/*" class="hidden">
+        <input type="file" id="file-input" accept="image/*" multiple class="hidden">
         <button id="attach-btn" title="上传图片" class="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all duration-150 flex-shrink-0 text-lg cursor-pointer">📎</button>
         <textarea id="message" rows="1" placeholder="输入你的问题，比如「我今天吃了..." class="flex-1 min-w-0 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm text-gray-800 placeholder-gray-400 outline-none transition-all duration-150 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 resize-none overflow-y-auto custom-scrollbar" style="max-height:120px"></textarea>
         <button id="send" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-medium rounded-full transition-all duration-150 flex-shrink-0 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 disabled:active:scale-100 cursor-pointer">发送</button>
@@ -305,9 +302,6 @@
     const sendBtn = document.getElementById("send");
     const attachBtn = document.getElementById("attach-btn");
     const fileInput = document.getElementById("file-input");
-    const imagePreview = document.getElementById("image-preview");
-    const imagePreviewWrap = document.getElementById("image-preview-wrap");
-    const imageRemoveBtn = document.getElementById("image-remove-btn");
 
     /* ========== Modal 焦点陷阱 (Focus Trap) 修复 Tab 穿透 Bug ========== */
     const profileModal = document.getElementById("profile-modal");
@@ -353,7 +347,16 @@
       }
     });
 
-    let pendingImageBase64 = null;
+    let pendingImages = []; // 将原本的 pendingImageBase64 变更为数组
+    let isGenerating = false; // 新增：是否正在生成回答的标志
+
+    /* ========== 页面刷新拦截（防止生成中断） ========== */
+    window.addEventListener("beforeunload", function (e) {
+      if (isGenerating) {
+        e.preventDefault();
+        e.returnValue = "AI 正在生成回答，刷新将导致连接中断并丢失当前进度。确定要离开吗？";
+      }
+    });
 
     /* ========== 历史模式 & 会话历史 ========== */
     let isHistoryMode = false;
@@ -497,37 +500,62 @@
     /* ========== 附件逻辑 ========== */
     attachBtn.addEventListener("click", () => fileInput.click());
 
-    fileInput.addEventListener("change", () => {
-      const file = fileInput.files[0];
-      if (!file) {
-        hidePreview();
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        pendingImageBase64 = reader.result;
-        imagePreview.src = pendingImageBase64;
-        imagePreviewWrap.style.display = "inline-block";
-        attachBtn.classList.add("has-file");
-        attachBtn.title = "已选择图片，点击可重新选择";
-      };
-      reader.readAsDataURL(file);
+    document.getElementById("file-input").addEventListener("change", (e) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            let width = img.width, height = img.height;
+            const maxDim = 800;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) { height *= maxDim / width; width = maxDim; }
+              else { width *= maxDim / height; height = maxDim; }
+            }
+            canvas.width = width; canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const b64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+            pendingImages.push(b64); // 存入数组
+            
+            renderImagePreviews(); // 渲染预览图
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      e.target.value = ""; // 清空 input，允许重复选同一张图
     });
 
-    function hidePreview() {
-      pendingImageBase64 = null;
-      imagePreview.src = "";
-      imagePreviewWrap.style.display = "none";
-      fileInput.value = "";
-      attachBtn.classList.remove("has-file");
-      attachBtn.title = "上传图片";
+    function renderImagePreviews() {
+      const container = document.getElementById("image-preview-container");
+      container.innerHTML = ""; // 清空重绘
+      container.className = "px-4 pt-3 pb-1 flex flex-wrap gap-2 hidden"; 
+      
+      if (pendingImages.length === 0) return;
+      
+      pendingImages.forEach((b64, index) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "relative inline-block";
+        wrapper.innerHTML = `
+          <img src="data:image/jpeg;base64,${b64}" class="h-16 w-16 object-cover rounded border shadow-sm">
+          <button onclick="removeImage(${index})" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow hover:bg-red-600 transition-colors">×</button>
+        `;
+        container.appendChild(wrapper);
+      });
+      container.classList.remove("hidden");
     }
 
-    /* ========== Bug 2：图片删除按钮 ========== */
-    imageRemoveBtn.addEventListener("click", function(e) {
-      e.stopPropagation();
-      hidePreview();
-    });
+    // 修改移除图片函数为全局可调用
+    window.removeImage = function(index) {
+      pendingImages.splice(index, 1);
+      renderImagePreviews();
+    };
 
     /* ========== 聊天气泡（不动） ========== */
     function addMsg(cls, contentHTML) {
@@ -555,23 +583,25 @@
       if (isHistoryMode) return;
 
       const text = input.value.trim();
-      const imageBase64 = pendingImageBase64;
-      if (!text && !imageBase64) return;
+      if (!text && pendingImages.length === 0) return;
 
       // 锁定发送按钮和输入框，防止重复发送
       sendBtn.disabled = true;
       input.disabled = true;
       sendBtn.textContent = "生成中...";
+      isGenerating = true;
 
       input.value = "";
       // textarea 值清空后手动重置高度
       input.style.height = "auto";
-      hidePreview();
+      const imagesToSend = [...pendingImages];
+      pendingImages = [];
+      renderImagePreviews();
 
       let userHTML = "";
-      if (imageBase64) {
-        userHTML += `<img class="thumb-preview" src="${imageBase64}" alt="用户上传图片">`;
-      }
+      imagesToSend.forEach(b64 => {
+        userHTML += `<img class="thumb-preview" src="data:image/jpeg;base64,${b64}" alt="用户上传图片">`;
+      });
       if (text) {
         userHTML += escapeHTML(text);
       } else {
@@ -589,7 +619,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text || "",
-            image_base64: imageBase64 || null,
+            image_base64: imagesToSend,
             long_term_goal: currentLongTermGoal,
             session_id: sessionId,
             thread_id: sessionStorage.getItem("healthAgentThreadId") || null,
@@ -640,6 +670,7 @@
         input.disabled = false;
         sendBtn.textContent = "发送";
         input.focus();
+        isGenerating = false;
       }
     }
 
@@ -673,7 +704,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: "【系统指令】：当前对话周期即将结束。请用一段精炼的话，总结本周期内我的核心健康数据、饮食记录以及你的核心建议，作为下一阶段的记忆存档。",
-            image_base64: null,
+            image_base64: [],
             long_term_goal: currentLongTermGoal,
             session_id: sessionId,
             thread_id: currentThreadId,
@@ -735,7 +766,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: "【系统背景设定，请记住并简短回复'已继承'】：这是上个周期的记忆摘要：\n" + summaryText,
-            image_base64: null,
+            image_base64: [],
             long_term_goal: currentLongTermGoal,
             session_id: sessionId,
             thread_id: threadId,
